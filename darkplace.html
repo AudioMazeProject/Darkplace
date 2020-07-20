@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title></title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
+	<link rel="stylesheet" type="text/css" href="styles.css">
+
+    <script>
+        window.console = window.console || function (t) { };
+    </script>
+    <script>
+		//No clue what this does, it was already here
+        if (document.location.search.match(/type=embed/gi)) {
+            window.parent.postMessage("resize", "*");
+		}
+    </script>
+</head>
+
+<body translate="no">
+
+	<div id="blackoutDiv"><div class="center" id="blackoutDivChild"></div></div>
+
+	<div id="youWinDiv">
+		<div class="center">
+			<h1 style="font-size:30px">Congratulations, you win!</h1><br><br>
+			<p>Submit results?</p>
+			<button id="yesSub">Yes</button>
+			<button id="noSub">No</button>
+		</div>
+	</div>
+
+    <div id="overlay">
+        <div>
+			<h1>DARKPLACE ALPHA</h1>
+			<a href="editCube.html">Map creator</a>
+        </div>
+
+		<br><br>
+		<div id="beginGame">
+			Enter name: <br>
+			<input type="text" id="nameInput" required><br><br>
+			<button id="startButton">Play game</button>
+            <button id="loadButton">Load custom map</button>
+		</div>
+		<br>
+        <div id="settings">
+			<h3 style="margin-top:0px">Settings</h3>
+			<input type="checkbox" id="goBackwardsCheck"><label>Play map backwards</label><br>
+			<input type="checkbox" id="blackoutScreenCheck"><label>Blackout screen</label><br>
+			<input type="checkbox" id="prevSoundCheck"><label>Ping on previous node</label><br>
+			<input type="checkbox" id="submitResultsCheck"><label>Submit results</label><br>
+			<input type="checkbox" id="audioCaneCheck"><label>Enable audio cane</label><br>
+			
+			<input type="radio" name="controls" id="controllerCheck"><label>Gamepad controls</label><br>
+			<input type="radio" name="controls" id="keyboardCheck" checked><label>Keyboard controls</label><br>
+			<select name="Existing Maps" id="maplists">
+				<option value="0">Select map:</option>
+			</select>
+		</div>
+
+		
+
+	</div>
+
+	<div id="gameDiv"></div>
+    <iframe id="mapFile" style="display: none;"></iframe>
+    <iframe id="settingsFile" src="./mazes/mapSettings.txt" style="display: none;"></iframe>
+
+    <script src="stopExecutionOnTimeout-de7e2ef6bfefd24b79a3f68b414b87b8db5b08439cac3f1012092b2290c719cd.js"></script>
+    <script src='jquery.min.js'></script>
+    <script src='three.min.js'></script>
+	<script src="threeJSSources.js"></script>
+	<script src="VRButton.js"></script>
+	
+
+	
+<script type="module" id='rendered-js'>
+import {OBJLoader} from './OBJLoader.js';
+
+
+//radioGroup.addEventListener( 'change', changeSide );
+ (function() { // Wrapping everything in an anonymous function helps prevent issues from global variables
+	
+	
+
+	//Paths to the various sounds
+	const soundFiles = {
+		pingSound: "ping.ogg",
+		winSound: "airhorn.mp3",
+		caneSound: "robotBlip.mp3",
+		prevNodeSound: "aPing.mp3",
+		customBeaconSound: "dPing.wav"
+	};
+
+
+	let camera, scene, renderer;
+
+	function loadSound(file, playSound, volume) {
+		playSound = playSound || false;
+		volume = volume || 1;
+		
+		const listener = new THREE.AudioListener();
+		camera.add(listener);
+
+		// create the PositionalAudio object (passing in the listener)
+		const sound = new THREE.PositionalAudio(listener);
+
+		// load a sound and set it as the PositionalAudio object's buffer
+		const loader = new THREE.AudioLoader();
+		loader.load(file, function (buffer) {
+			sound.setBuffer(buffer);
+			sound.setRefDistance(20);
+			sound.setVolume(volume);
+			sound.hasPlaybackControl = true;
+			if (playSound) {
+				sound.play();
+			}
+		});
+
+		return sound;
+	}
+
+	//function for when "load a map" button is clicked, calls init()
+	function loadMap() {
+		const reader = new FileReader();
+		const input = document.createElement('input');
+		input.type = 'file';
+
+		input.onchange = e => {
+
+			// getting a hold of the file reference
+			const file = e.target.files[0];
+			if (file) {
+				// setting up the reader
+
+				reader.readAsText(file, 'UTF-8');
+				// here we tell the reader what to do when it's done reading...
+				
+				reader.onload = readerEvent => {
+					const content = readerEvent.target.result; // this is the content!
+					customMap = content.split(",");
+					init(undefined, customMap);
+				}
+			} else {
+				console.log("no files selected");
+			}
+		}
+		input.click();
+	}
+
+	//Called by loadMap() (from Load a Map button) and from clicking Play / "startButton" 
+	function init(e, mapToLoad) {
+		mapToLoad = mapToLoad || getSelectedMap() || [(10 - Math.random() * 20), (10 - Math.random() * 20), (10 - Math.random() * 20)];
+
+		let mapObj = {};
+		if (typeof mapToLoad === "object" && !Array.isArray(mapToLoad)) {
+			//Convert map object to array of points
+			let mapArr = []
+			mapObj = mapToLoad;
+			for (const [key, value] of Object.entries(mapToLoad)) {
+  				if (key.includes("Sequence")) {
+					mapArr = mapArr.concat(value);
+				}
+			}
+			mapToLoad = mapArr;
+			loadSettings(mapObj);
+		}
+		
+		const sphereRadius = mapObj.sphereRadius || 2;
+
+		let timeList = [];
+		let sphereList = [];
+		let foundSpheres = [];
+		let raycastList = [];
+
+		const blackoutDiv = document.getElementById("blackoutDiv");
+		const blackoutDivChild = document.getElementById("blackoutDivChild");
+		
+		const enableKeyboard = document.getElementById("keyboardCheck").checked;
+		const enablePrevSound = document.getElementById("prevSoundCheck").checked;
+		const enableAudioCane = document.getElementById("audioCaneCheck").checked;
+
+		//Can't be a constant 
+		let enableController = document.getElementById("controllerCheck").checked;
+		let goBackwards = document.getElementById("goBackwardsCheck").checked;
+
+		const username = document.getElementById("nameInput").value;
+		if (username === "") {
+			alert("You must enter your name!");
+			return;
+		}
+
+		const overlay = document.getElementById('overlay');
+		overlay.style.display = "none";
+		
+		const clock = new THREE.Clock();
+		renderer = new THREE.WebGLRenderer();
+		renderer.setSize(window.innerWidth, window.innerHeight);
+
+		document.getElementById('gameDiv').appendChild(renderer.domElement)
+		
+		//detect gamepad or connect keyboard events
+		if (enableController) {
+			enableController = false
+			const checkGP = window.setInterval(function() {
+					if (navigator.getGamepads()[0]) {
+						enableController = true;
+						window.clearInterval(checkGP);
+					}
+				}, 500);
+		}
+		else if (enableKeyboard) {
+			document.addEventListener("keydown", function(keyObj) {onKeyDown(keyObj, sounds)});
+			document.addEventListener("keyup", onKeyUp);
+		}
+
+		///////////////////effect = new THREE.StereoEffect(renderer);
+
+		scene = new THREE.Scene();
+		scene.background = new THREE.Color(0xcccccc);
+
+		camera = new THREE.PerspectiveCamera(90, 1, 1, 70000);
+		//camera = new THREE.PerspectiveCamera(45, width/height, 1, 70000);
+		camera.position.set(0, 10, 0);
+		
+		camera.aspect = window.innerWidth / window.innerHeight;
+		camera.updateProjectionMatrix();
+		scene.add(camera);
+
+		//Load objects
+		if (Object.keys(mapObj).length > 1 && mapObj.customObjList) {
+			for (let i = 0; i < mapObj.customObjList.length; ++i) {
+				const x = parseInt(mapObj.posList[i*3]);
+				const y = parseInt(mapObj.posList[i*3 + 1]);
+				const z = parseInt(mapObj.posList[i*3 + 2]);
+
+				const pos = new THREE.Vector3(x, y, z);
+				loadCustomObj(mapObj.customObjList[i], pos, raycastList);
+			}	
+		}
+
+		//VR
+		document.body.appendChild( VRButton.createButton( renderer ) );
+		renderer.xr.enabled = true;
+
+		let orienControlsEnabled = false;
+		function setOrientationControls(e) {
+			if (!e.alpha) {
+				return;
+			}
+
+			orienControlsEnabled = true;
+			controls = new THREE.DeviceOrientationControls(camera, true);
+			controls.connect();
+			controls.update(); 
+
+			window.removeEventListener('deviceorientation', setOrientationControls, true);
+		}
+		window.addEventListener('deviceorientation', setOrientationControls, true);
+
+		window.addEventListener('resize', resize, false);
+		
+		const light = new THREE.HemisphereLight(0xffffbb, 0x080820, 1);
+		scene.add(light);
+		const texture = new THREE.TextureLoader().load(
+			'DG3ZIX6.png',
+			undefined,
+			undefined,
+			function (err) {
+				alert('An error happened.');
+			}
+		);
+
+		texture.wrapS = THREE.RepeatWrapping;
+		texture.wrapT = THREE.RepeatWrapping;
+		texture.repeat = new THREE.Vector2(50, 50);
+		texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+		const material = new THREE.MeshPhongMaterial({
+			color: 0xff00ff,
+			specular: 0xffffff,
+			transparent: true,
+			opacity: .5,
+			shininess: 20,
+			side: THREE.DoubleSide,
+			map: texture
+		});
+
+		const geometry = new THREE.PlaneGeometry(1000, 1000);
+
+		const baseplateMesh = new THREE.Mesh(geometry, material);
+		baseplateMesh.rotation.x = -Math.PI / 2;
+		scene.add(baseplateMesh);
+
+		//make object containing needed sounds
+		const sounds = {};
+
+		//Load ping sound
+		sounds["pingSound"] = loadSound(soundFiles.pingSound);
+		sounds.pingSound.setLoop(true);
+
+		//Put additional sound in the previous sphere
+		if (enablePrevSound || mapObj.enablePrevSound) {
+			sounds["prevNodeSound"] = loadSound(soundFiles.prevNodeSound);
+			sounds.prevNodeSound.setLoop(true);
+		}
+
+		//Load sound and sphere for the audio cane if it's enabled
+		let probeObj;
+		let raycaster;
+		if (enableAudioCane || mapObj.enableAudioCane) {
+			raycaster = new THREE.Raycaster();
+			sounds["caneSound"] = loadSound(soundFiles.caneSound);
+			sounds.caneSound.setLoop(true);
+
+			// create an object for the sound to play from
+			const sphere = new THREE.SphereGeometry(1, 32, 16);
+
+			//10 - Math.random() * 20,Math.random() * 20,Math.random() * 20
+			const m = new THREE.MeshPhongMaterial({ color: 0xff0000 });
+			probeObj = new THREE.Mesh(sphere, m);
+			scene.add(probeObj);
+			probeObj.add(sounds.caneSound);
+		}
+
+		const listener = new THREE.AudioListener();
+		camera.add( listener );
+
+		// create a global audio source, not using loadSound because this can't be positional
+		const winSound = new THREE.Audio( listener );
+
+		const audioLoader = new THREE.AudioLoader();
+		audioLoader.load( soundFiles.winSound, function( buffer ) {
+			winSound.setBuffer( buffer );
+			winSound.setVolume( 0.15 );
+		});
+
+		sounds["winSound"] = winSound;
+
+		//The user must initiate the start, and then watch a count down. Yes, this is ugly in JS
+		blackoutDiv.style.display = "block"; 
+		blackoutDivChild.innerHTML = "Press W or move the control stick to begin";
+		
+		let pressedW = false;
+		function checkIfReady(keyObj) {
+			if (keyObj.key == "w") {
+				pressedW = true;
+				document.removeEventListener("keydown", checkIfReady)
+			}
+		}
+		document.addEventListener("keydown", checkIfReady);
+
+		//Wait three seconds before beginning. It's rather messy in JS
+		let countdown = 3;
+		const waitUntilReady = setInterval(function() {
+			if (pressedW || enableController) {
+				if (countdown <= 0) {
+					clearInterval(waitUntilReady);
+					begin();
+				}
+				else {
+					blackoutDivChild.innerHTML = countdown;
+					--countdown;
+				}
+			}
+		}, 1000)
+
+		function begin() {
+			blackoutDivChild.style.display = "none";
+			if (!document.getElementById("blackoutScreenCheck").checked) {
+				blackoutDiv.style.display = "none"; 
+			}
+			else {
+				blackoutDiv.innerHTML = "";
+			}
+
+			for (let i = 0; i < mapToLoad.length; i += 3) {
+				addSphere(mapToLoad[i], mapToLoad[i + 1], mapToLoad[i + 2], sphereList, sounds, sphereRadius);
+			}
+			
+			raycastList = raycastList.concat(sphereList);
+
+			sounds.pingSound.play();
+			clock.start();
+	
+			//recursive. calls update() and render()
+			function animate() {
+				if (enableController) {
+					updateController(sounds);
+				}
+				else if (enableKeyboard) {
+					updateKeyboardControls();
+				}
+
+				if (enableAudioCane || mapObj.enableAudioCane) {
+					raycast(probeObj, raycaster, raycastList, sounds);
+				}
+
+				//Collision detection
+				sphereList[0].geometry.computeBoundingBox(); // This is only necessary if 
+
+				const checkX = difference(sphereList[0].position.x, camera.position.x) < sphereRadius;
+				const checkY = difference(sphereList[0].position.y, camera.position.y) < sphereRadius;
+				const checkZ = difference(sphereList[0].position.z, camera.position.z) < sphereRadius;
+				
+				if (checkX && checkY && checkZ) {
+					saveTime(timeList, clock);
+					if (sphereList.length <= 1) { //If they're on the last sphere
+						if (goBackwards || mapObj.goBackwards) {
+							reverseMaze(sphereList, foundSpheres, sounds, mapObj, sphereRadius);
+							goBackwards = false; // Prevent them from going backwards again
+							mapObj.goBackwards = false;
+						}
+						else {
+							sounds.winSound.play();
+							alert("YOU WIN!")
+							youWin(username, timeList, sounds, mapObj);
+							
+						}
+					}
+					else {
+						foundTarget(sphereList, foundSpheres, enablePrevSound, mapObj, sounds)
+					}
+				}
+
+
+				if (orienControlsEnabled) {
+					controls.update();
+				}
+				renderer.render(scene, camera);
+			}
+
+			renderer.setAnimationLoop(animate);
+			
+		}
+	}
+
+	///add sphere in map to the list
+	function addSphere(x, y, z, sphereList, sounds, radius) {
+		// create an object for the sound to play from
+		const sphere = new THREE.SphereGeometry(radius, 32, 16);
+
+		//10 - Math.random() * 20,Math.random() * 20,Math.random() * 20
+		const material2 = new THREE.MeshPhongMaterial({ color: 0x00ffff });
+		const sphereMesh = new THREE.Mesh(sphere, material2);
+		scene.add(sphereMesh);
+
+		sphereMesh.position.set(x, y, z);
+
+		sphereList.push(sphereMesh); // Add sphere to sphereList
+
+		if (sphereList.length <= 1) {
+			sphereMesh.add(sounds.pingSound);
+		}
+	}
+
+	function loadCustomObj(objPath, pos, raycastList) {
+		const loader = new OBJLoader();
+
+		// load a resource
+		loader.load(
+			// resource URL
+			objPath,
+			// called when resource is loaded
+			function ( object ) {
+				scene.add( object );
+				raycastList.push(object);
+
+				object.rotation.x = Math.PI / 2;
+				object.position.copy(pos);
+			},
+			// called when loading is in progresses
+			function ( xhr ) {
+				console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
+			},
+			// called when loading has errors
+			function ( error ) {
+				console.log( 'An error happened' );
+			}
+		);	
+	}
+
+	//When user resizes screen
+	function resize() {
+		camera.aspect = window.innerWidth / window.innerHeight;
+		camera.updateProjectionMatrix();
+
+		renderer.setSize(window.innerWidth, window.innerHeight);
+	}
+
+	function difference(n, m) {
+		return Math.abs(n - m)
+	}
+
+	function saveTime(timeList, clock) {
+		//If it's not the first sphere
+		if (timeList.length > 0) {
+			let timeSum = 0;
+			for (let i = 0; i < timeList.length; ++i) {
+				timeSum += timeList[i];
+			}
+			//round to nearest thousandths place 
+			const newTime = Math.round((clock.getElapsedTime() - timeSum) * 1000) / 1000;
+			timeList.push(newTime);
+		}
+		else {
+			timeList.push(Math.round(clock.getElapsedTime() * 1000) / 1000);
+		}
+		console.log(timeList);
+	}
+
+	function reverseMaze(sphereList, foundSpheres, sounds, mapObj, radius) {
+		mapObj = mapObj || {};
+		
+		sounds.winSound.play();
+
+		const prevMesh = sphereList.shift();
+
+		foundSpheres.push(prevMesh)
+
+		for (let i = foundSpheres.length-1; i >= 0; --i) {
+			sphereList.push(foundSpheres[i]);
+		}
+		sphereList[0].add(sounds.pingSound)
+		foundSpheres.length = 0;
+
+		//So the last sphere they just found isn't immediately detected again
+		camera.position.x += radius * 2;
+
+		if (Object.keys(mapObj).length > 0) {
+
+			const objArr = Object.entries(mapObj);
+			for (let i = objArr.length - 1; i >= 0; --i) {
+				let key = objArr[i][0];
+				let val = objArr[i][1];
+				if (key.includes("Sequence")) {
+					mapObj[key + "(2nd time)"] = val;
+				}
+			}
+		}
+		
+	}
+
+	function foundTarget(sphereList, foundSpheres, enablePrevSound, mapObj, sounds) {
+		sounds.winSound.play();
+
+		const prevMesh = sphereList.shift();
+		if (enablePrevSound || mapObj.enablePrevSound) {
+			prevMesh.add(sounds.prevNodeSound);
+
+			if (!sounds.prevNodeSound.isPlaying) {
+				sounds.prevNodeSound.play();
+			}
+		}
+		foundSpheres.push(prevMesh)
+		
+		sphereList[0].add(sounds.pingSound);
+		
+	}
+
+	//For the audio cane functionality
+	function raycast(probeObj, raycaster, raycastList, sounds) {
+
+		let camDirection = new THREE.Vector3();
+		camera.getWorldDirection(camDirection);
+		raycaster.set(camera.position, camDirection.normalize());
+
+		// calculate objects intersecting the picking ray
+		const intersects = raycaster.intersectObjects( raycastList, true );
+
+		if (intersects.length > 0) {
+			
+			probeObj.position.copy(intersects[0].point);
+			if (!sounds.caneSound.isPlaying) {
+				sounds.caneSound.play();
+			}
+		}
+		else {
+			sounds.caneSound.pause();
+		}
+	}
+
+	function addBeaconAtCam(sounds) {
+		const beaconSound = loadSound(soundFiles.customBeaconSound, true);
+		beaconSound.setLoop(true);
+
+		let newKey = "";	
+		do {
+			newKey = "beacon" + Math.random();
+		}
+		while (sounds.hasOwnProperty(newKey));
+		sounds[newKey] = beaconSound;
+
+		// create an object for the sound to play from
+		const sphere = new THREE.SphereGeometry(1, 32, 16);
+
+		//10 - Math.random() * 20,Math.random() * 20,Math.random() * 20
+		const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
+		const customBeacon = new THREE.Mesh(sphere, material);
+		scene.add(customBeacon);
+		customBeacon.position.copy(camera.position)
+
+		customBeacon.add(beaconSound);
+	}
+
+	function loadSettings(mapObj) {
+		const file = document.getElementById("settingsFile");
+		const contents = file.contentWindow.document.body.childNodes[0].innerHTML;
+		while (contents.indexOf("\r") >= 0) {
+			contents = contents.replace("\r", "");
+		}
+		const arrLines = contents.split("\n");
+		//alert("File " + file.src + " has " + arrLines.length + " lines");
+
+		for (let i = 0; i < arrLines.length; ++i) {
+			if (arrLines[i] == mapObj.name) {
+				//Play map backwards
+				let colonPos = arrLines[i+1].search(":");
+				let setting = arrLines[i+1].substr(colonPos+1).trim();
+				mapObj["goBackwards"] = (setting == "true");
+
+				//Ping on previous node
+				colonPos = arrLines[i+2].search(":");
+				setting = arrLines[i+2].substr(colonPos+1).trim();
+				mapObj["enablePrevSound"] = (setting == "true");
+
+				//Enable audio cane
+				colonPos = arrLines[i+3].search(":");
+				setting = arrLines[i+3].substr(colonPos+1).trim();
+				mapObj["enableAudioCane"] = (setting == "true");
+
+				//Get sphere radius
+				colonPos = arrLines[i+4].search(":");
+				setting = arrLines[i+4].substr(colonPos+1).trim();
+				mapObj["sphereRadius"] = parseInt(setting);
+
+				//Get custom object
+				colonPos = arrLines[i+5].search(":");
+				setting = arrLines[i+5].substr(colonPos+1).trim();
+				if (setting === "null") {
+					setting = null;
+					mapObj["customObjList"] = setting;
+				}
+				else {
+					const objList = setting.split(",");
+					mapObj["customObjList"] = objList;
+
+					//Get spositions
+					colonPos = arrLines[i+6].search(":");
+					setting = arrLines[i+6].substr(colonPos+1).trim();
+					const posList = setting.split(",");
+					mapObj["posList"] = posList;
+				}
+
+				break;
+			}
+		}
+	}
+
+
+	//Load in the drop-down list from a text file
+	function loadMapFile() {
+		const file = document.getElementById("mapFile");
+		
+		const contents = file.contentWindow.document.body.childNodes[0].innerHTML;
+		while (contents.indexOf("\r") >= 0) {
+			contents = contents.replace("\r", "");
+		}
+		const arrLines = contents.split("\n");
+		//alert("File " + file.src + " has " + arrLines.length + " lines");
+		const mapsElement = document.getElementById("maplists");
+
+		for (let i = 0; i < arrLines.length; ++i) {
+			if (arrLines[i].toLowerCase().includes("map")) {
+				const option = document.createElement("option");
+				option.value = arrLines[i];
+				option.text = arrLines[i];
+				mapsElement.appendChild(option);
+			}
+		}
+
+		///alert("created list");
+	} 
+	document.getElementById("mapFile").addEventListener("load", loadMapFile);
+	document.getElementById("mapFile").src = "./mazes/maps.txt";
+
+	function getSelectedMap() {
+		const mapLists = document.getElementById("maplists");
+		const selectedIndex = mapLists.selectedIndex;
+		const mapName = mapLists.options[selectedIndex].text;
+		const nextMap = mapLists.options[selectedIndex + 1];
+
+		let nextMapName = "";
+		if (nextMap !== undefined) {
+			nextMapName = nextMap.text;
+		}
+
+		//let chosenMap = [];
+		let mapObj = {};
+
+		if (selectedIndex > 0) {
+			const file = document.getElementById("mapFile");
+			const contents = file.contentWindow.document.body.childNodes[0].innerHTML;
+			while (contents.indexOf("\r") >= 0) {
+				contents = contents.replace("\r", "");
+			}
+			const arrLines = contents.split("\n");
+			//alert("File " + file.src + " has " + arrLines.length + " lines");
+
+			let chosenLines = [];
+			let mapNameIndex = arrLines.length;
+			for (let i = 0; i < arrLines.length; ++i) {
+				const currLine = arrLines[i];
+				if (currLine == nextMapName) {
+					break;
+				}
+				if (currLine == mapName) {
+					mapObj["name"] = mapName;
+					mapNameIndex = i;
+				}
+				else if (mapNameIndex < i) {
+					mapObj["Sequence " + (i - mapNameIndex)] = currLine.split(",");
+				}
+			}
+		}
+
+		if (Object.keys(mapObj).length > 0) {
+			return mapObj;
+		}
+		return null;
+	}
+
+	function sendEmail(msg) {	
+		const data = {
+			message: msg
+		};
+		$.ajax({
+			type: "POST",
+			url: "email.php",
+			data: data,
+			success: function(data, status){
+				console.log(status);
+			}
+		});
+	}
+
+	function youWin(name, timeList, sounds, mapObj) {
+		renderer.setAnimationLoop(null);
+
+		if (!document.getElementById("submitResultsCheck").checked) {
+			location.reload();
+		}
+		else {
+
+			const winScreen = document.getElementById("youWinDiv");
+			const btnYes = document.getElementById("yesSub");
+			const btnNo = document.getElementById("noSub");
+
+			winScreen.style.display = "block";
+			for (let s of Object.values(sounds)) {
+				s.pause();
+			}
+
+			btnYes.addEventListener("click", function() {
+				let msgString = name + "\n";
+
+				if (Object.keys(mapObj).length > 0) {
+					msgString += mapObj.name + "\n";
+					let timeIndex = 0;
+					for (const [key, value] of Object.entries(mapObj)) {
+						if (key.includes("Sequence")) {
+							msgString += key + "\n";
+							for (let i = 0; i < value.length; i += 3) { //Each element is 1/3 coordinates of a sphere
+								msgString += timeList[timeIndex] + "\n";
+								++timeIndex;
+							}
+						}
+					}
+				}
+				else {
+					for (let i = 0; i < timeList.length; ++i) {
+						msgString += timeList[i] + "\n";
+					}
+				}
+
+				sendEmail(msgString);
+				location.reload();
+			})
+			btnNo.addEventListener("click", function() {
+				location.reload();
+			})
+		}
+	}
+
+	//existingmaps();
+
+	//Keyboard controls
+	let forward = false;
+	let back = false;
+	let rotLeft = false;
+	let rotRight = false;
+	let up = false;
+	let down = false;
+	function onKeyDown(keyObj, sounds) {
+			
+		if (keyObj.key == "w") {
+			forward = true;
+		}
+		else if (keyObj.key == "s") {
+			back = true;
+		}
+		else if (keyObj.key == "ArrowLeft") {
+			rotLeft = true;
+		}
+		else if (keyObj.key == "ArrowRight") {
+			rotRight = true;
+		}
+		else if (keyObj.key == "ArrowUp") {
+			up = true;
+		}
+		else if (keyObj.key == "ArrowDown") {
+			down = true;
+		}
+
+		//Beacon trail
+		if (keyObj.key == "Shift") {
+			addBeaconAtCam(sounds);
+		}
+	};
+
+	function onKeyUp(keyObj) {
+		if (keyObj.key == "w") {
+			forward = false;
+		}
+		else if (keyObj.key == "s") {
+			back = false;
+		}
+		else if (keyObj.key == "ArrowLeft") {
+			rotLeft = false;
+		}
+		else if (keyObj.key == "ArrowRight") {
+			rotRight = false;
+		}
+		else if (keyObj.key == "ArrowUp") {
+			up = false;
+		}
+		else if (keyObj.key == "ArrowDown") {
+			down = false;
+		}
+	};
+
+	function updateKeyboardControls() {
+		if (forward) {
+			camera.translateZ(-0.5);
+		}
+		else if (back) {
+			camera.translateZ(0.5);
+		}
+		if (rotLeft) {
+			camera.rotation.y += 0.03;
+		}
+		else if (rotRight) {
+			camera.rotation.y -= 0.03;
+		}
+		else if (up) {
+			camera.translateY(0.5)
+		}
+		else if (down) {
+			camera.translateY(-0.5)
+		}
+
+	}
+
+	//Gamepad controls
+	let lastValueRB = false;
+	function updateController(sounds) {
+		const gamePad = navigator.getGamepads()[0];
+		//const x = gamePad.axes[0];
+		//const z = gamePad.axes[1];
+		
+		const x = gamePad.axes[2];
+		const z = gamePad.axes[3];
+		
+		camera.translateX(x);
+		camera.translateZ(z);
+
+		const RBPressed = gamePad.buttons[5].pressed
+		//Right bumper
+		if (RBPressed != lastValueRB) {
+			lastValueRB = RBPressed;
+			if (RBPressed) {
+				addBeaconAtCam(sounds);
+			}
+		}
+		
+	}
+
+	document.getElementById("startButton").addEventListener("click", init);
+	document.getElementById("loadButton").addEventListener("click", loadMap);
+
+
+})();
+
+
+</script>
+
+</body>
+
+</html>

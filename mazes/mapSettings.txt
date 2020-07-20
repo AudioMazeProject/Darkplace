@@ -1,0 +1,25 @@
+Map 1
+Play map backwards: true
+Ping on previous node: true
+Enable audio cane: true
+Sphere radius: 5
+Custom object: null
+Map 2
+Play map backwards: false
+Ping on previous node: false
+Enable audio cane: false
+Sphere radius: 2
+Custom objects: ./customObjects/star.obj, ./customObjects/star.obj
+Object positions: 0, 0, 0, 100, 100, 100
+Map 3
+Play map backwards: false
+Ping on previous node: false
+Enable audio cane: false
+Sphere radius: 2
+Custom object: null
+Map 4
+Play map backwards: false
+Ping on previous node: false
+Enable audio cane: false
+Sphere radius: 2
+Custom object: null

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title></title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	<link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
+	<link rel="stylesheet" type="text/css" href="styles.css">
+
+	<style>
+		#removePointBtn, #addPointButton, #saveBtn {
+			margin-top:7px !important;
+		}
+	</style>
+
+    <script>
+        window.console = window.console || function (t) { };
+    </script>
+    <script>
+        if (document.location.search.match(/type=embed/gi)) {
+            window.parent.postMessage("resize", "*");
+        }
+    </script>
+</head>
+
+<body translate="no">
+
+    <div id="overlay">
+
+        <h1>Map Creator</h1>
+		<div class="ranger">
+            <input type=range min=0 max=50 value=1 step=1 oninput="cubeRotSpeed(value)">
+        </div>
+
+        <div class="scene">
+            <div class="cube" id="cube">
+                <div class="cube__face cube__face--front">front</div>
+                <div class="cube__face cube__face--back"></div>
+                <div class="cube__face cube__face--right"></div>
+                <div class="cube__face cube__face--left"></div>
+                <div class="cube__face cube__face--top">top</div>
+                <div class="cube__face cube__face--bottom"></div>
+                <div class="cube__face cube__face--yz"></div>
+				<div class="cube__face cube__face--xy"></div>
+				<div id="locationMarker"></div>
+			</div>
+        </div>
+		
+		<div class="create" id="create" style="z-index: 19;">
+			<input type="text" value="Input Name" id="mapname"><br><br>
+			<label>X</label><input type="range" label="X" min="0" max="200" value="0" id="sliderx" oninput="updateCurrent()" onchange="updateCurrent()"><br>
+			<label>Y</label><input type="range" label="Y" min="0" max="200" value="0" id="slidery" oninput="updateCurrent()" onchange="updateCurrent()"><br>
+			<label>Z</label><input type="range" label="Z" min="-100" max="100" value="-100" id="sliderz" oninput="updateCurrent()" onchange="updateCurrent()"><br>
+			<button id="addPointBtn" style="margin-top:10px;">Add point</button><br>
+			<button id="removePointBtn">Remove last point</button><br>
+			<button id="saveBtn">Save</button>
+		</div>
+		<a href="darkplace.html" style="position:absolute; top: 5px; left: 10px;">Load a map</a>
+	</div>
+
+    <script src="stopExecutionOnTimeout-de7e2ef6bfefd24b79a3f68b414b87b8db5b08439cac3f1012092b2290c719cd.js"></script>
+    <script src='jquery.min.js'></script>
+
+	
+<script id='rendered-js'>
+
+let mapList = [];
+let totalPoints = 0;
+
+function cubeRotSpeed(AR) {
+    let root = document.documentElement;
+    root.style.setProperty('--rotspeed', AR + "s");
+}
+
+//this function is meant to make the spheres be represented on the 3d cube
+function loadMap() {
+
+	for (i = 1; i < totalPoints + 1; i++) {
+		document.getElementById('circle' + i).remove();
+	}
+
+	totalPoints = 0;
+	for (i = 0; i < mapList.length; i += 3) {
+		currentPoint = document.createElement('div');
+		totalPoints += 1;
+		currentPoint.setAttribute('id', 'circle' + totalPoints);
+		currentPoint.style.position = "absolute";
+
+		currentPoint.style.webkitTransform = 'translate3d(0, 0, 0)';
+		currentPoint.style.webkitTransform = 'translateX(' + mapList[i] + 'px) translateY(' + mapList[i+1] + 'px) translateZ(' + mapList[i + 2] + 'px)';
+		document.getElementById('cube').appendChild(currentPoint);
+
+
+		//alternate colors
+		if ((i/3) % 3 == 0) {
+			currentPoint.style.color = "red";
+		}
+		else if ((i/3) % 3 == 1) {
+			currentPoint.style.color = "blue";
+		} 
+		else if ((i/3) % 3 == 2) {
+			currentPoint.style.color = "yellow";
+		}
+
+		currentPoint.innerHTML = i/3 + 1;
+	}
+
+}
+
+document.getElementById("saveBtn").onclick = function saver() {
+
+	if (document.getElementById("mapname").value == "") {
+		alert("Please enter a name for your map")
+	}
+	else {
+		//We need to change the coordinates to work with threeJS
+		for (let i = 0; i < mapList.length; i += 3) {
+			mapList[i] -= 100; //So the scale is between -100 and 100
+			mapList[i+1] -= 100;
+
+			mapList[i] *= -1; 	//All the coordinates are flipped in threeJS compared to the cube
+			mapList[i+1] *= -1; //For example, this causes positive y to be up and negative y to be down
+			mapList[i+2] *= -1; 
+		}
+		localStorage.setItem(document.getElementById("mapname").value, mapList);
+		localStorageToFile();
+	}
+}
+
+document.getElementById("addPointBtn").onclick = function adder() {
+	mapList.push(document.getElementById("sliderx").value);
+	mapList.push(document.getElementById("slidery").value);
+	mapList.push(document.getElementById("sliderz").value);
+	console.log(mapList);
+	loadMap();
+};
+
+document.getElementById("removePointBtn").onclick = function remover() {
+	//alert(mapList);
+	mapList.pop();
+	mapList.pop();
+	mapList.pop();
+	//alert(mapList);
+	loadMap();
+	//alert("removed");
+}
+
+//function is called whenever a slider is moved (to move the red dot)
+function updateCurrent() {
+    const locMarker = document.getElementById('locationMarker');
+    locMarker.style.webkitTransform = 'none';
+    const s = 'translateX(' + document.getElementById("sliderx").value + 'px) translateY(' + document.getElementById("slidery").value + 'px) translateZ(' + document.getElementById("sliderz").value + 'px)';
+    locMarker.style.webkitTransform = s;
+    document.getElementById('cube').appendChild(locMarker);
+}
+
+//this function is called when you press the save button
+function localStorageToFile() {
+    const textToSave = mapList;
+    const textToSaveAsBlob = new Blob([textToSave], { type: "text/plain" });
+    const textToSaveAsURL = window.URL.createObjectURL(textToSaveAsBlob);
+    const fileNameToSaveAs = document.getElementById("mapname").value;
+
+    const downloadLink = document.createElement("a");
+    downloadLink.download = fileNameToSaveAs;
+    downloadLink.innerHTML = "Download File";
+    downloadLink.href = textToSaveAsURL;
+    downloadLink.onclick = function (e) { this.parentNode.removeChild(this) };
+    downloadLink.style.display = "none";
+    document.body.appendChild(downloadLink);
+
+	//forces you to download file
+    downloadLink.click();
+}
+
+</script>
+
+</body>
+
+</html>

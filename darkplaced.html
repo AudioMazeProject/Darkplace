@@ -1,0 +1,130 @@
+<html lang="en"><head>
+		<title>three.js webgl - controls - deviceorientation</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	 
+	</head>
+	<body>
+
+	 
+
+		<script type="module">
+var mesh
+			import * as THREE from './three.module.js';
+
+			import { DeviceOrientationControls } from './DeviceOrientationControls.js';
+
+			var camera, scene, renderer, controls;
+
+			init();
+			animate();
+
+			function init() {
+
+				camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 1, 1100 );
+
+				controls = new DeviceOrientationControls( camera );
+
+				scene = new THREE.Scene();
+//scene.background = new THREE.Color( 0xff0000 );
+				var geometry = new THREE.SphereBufferGeometry( 500, 60, 40 );
+				// invert the geometry on the x-axis so that all of the faces point inward
+				geometry.scale( - 1, 1, 1 );
+
+				var material = new THREE.MeshBasicMaterial( {
+					map: new THREE.TextureLoader().load( '7.jpg' )} );
+
+				var mesh = new THREE.Mesh( geometry, material );
+				//scene.add( mesh );
+
+				var helperGeometry = new THREE.BoxBufferGeometry( 100, 100, 100, 4, 4, 4 );
+				var helperMaterial = new THREE.MeshBasicMaterial( { color: 0xff00ff, wireframe: true } );
+				var helper = new THREE.Mesh( helperGeometry, helperMaterial );
+				scene.add( helper );
+
+				//
+
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				document.body.appendChild( renderer.domElement );
+
+				//
+
+				window.addEventListener( 'resize', onWindowResize, false );
+
+
+
+// create an AudioListener and add it to the camera
+var listener = new THREE.AudioListener();
+camera.add( listener );
+
+// create the PositionalAudio object (passing in the listener)
+var sound = new THREE.PositionalAudio( listener );
+
+// load a sound and set it as the PositionalAudio object's buffer
+var audioLoader = new THREE.AudioLoader();
+audioLoader.load( 'ping.ogg', function( buffer ) {
+	sound.setBuffer( buffer );
+	sound.setRefDistance( 20 );
+	sound.play();
+});
+
+// create an object for the sound to play from
+var sphere = new THREE.SphereGeometry( 20, 32, 16 );
+var material = new THREE.MeshPhongMaterial( { color: 0xff2200 } );
+mesh = new THREE.Mesh( sphere, material );
+scene.add( mesh );
+
+// finally add the sound to the mesh
+
+mesh.add( sound );
+alert("soun");
+
+
+
+
+			}
+
+			function animate() {
+
+				window.requestAnimationFrame( animate );
+
+				controls.update();
+				renderer.render( scene, camera );
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+function randomlyplaceobject() {
+
+var geometry = new THREE.SphereGeometry( 5, 32, 32 );
+var material = new THREE.MeshBasicMaterial( {color: 0x00ff00} );
+var sphere = new THREE.Mesh( geometry, material );
+//Math.random(),Math.random() ,Math.random()
+sphere.position.set( 1,1,1 )
+scene.add( sphere );
+
+}
+randomlyplaceobject();
+
+function playsounds() {
+}
+
+function moveforward() {
+}
+window.onclick = function(event) {
+    mesh.add( sound );
+}
+		</script>
+	
+
+<canvas ></canvas></body></html>
