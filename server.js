@@ -95,7 +95,7 @@ wsServer.on('request', function (request) {
 				}
 			}
 			else {
-				const dataArr = message.utf8Data.split(",");
+				const dataArr = message.utf8Data.split(","); // XYZ coordinates
 
 				const json = JSON.stringify({
 					type: "data",

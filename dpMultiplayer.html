@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Map Loader</title>
+    <title>Multiplayer</title>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,15 +14,33 @@
         window.console = window.console || function (t) { };
     </script>
     <script>
-		//No clue what this does, it was already here
         if (document.location.search.match(/type=embed/gi)) {
             window.parent.postMessage("resize", "*");
 		}
-    </script>
+		
+	</script>
+	
+	<style>
+		#connectedDiv {
+			margin-top: 15px;
+			margin-bottom: 0px;
+		}
+		#settings {
+			vertical-align:top;
+			padding-bottom: 24px;
+		}
+		.error {
+			color:red;
+		}
+		.success {
+			color:lightgreen;
+		}
+	</style>
 </head>
 
 <body translate="no">
 
+	<!--<button id="button" type="button" ontouchstart="moveforward()"></button>-->
 	<div id="blackoutDiv"><div class="center" id="blackoutDivChild"></div></div>
 
 	<div id="youWinDiv">
@@ -36,17 +54,21 @@
 
     <div id="overlay">
         <div>
-			<h1><a class="home" href="index.html">DARKPLACE ALPHA</a></h1>
+			<h1><a class="home" href="index.html">DARKPLACE ALPHA MULTIPLAYER</a></h1>
+			<div id="connectedDiv">Not connected to server</div>
         </div>
 
 		<br><br>
 		<div id="beginGame">
+			Enter server name: <br>
+			<input type="text" id="serverInput" value="localhost" required><br>
+			<button id="connectButton" style="margin-top:10px;">Connect to server</button><br><br>
 			Enter name: <br>
 			<input type="text" id="nameInput" required><br><br>
 			<button id="startButton">Play game</button>
             <button id="loadButton">Load custom map</button>
 		</div>
-		<br>
+		
         <div id="settings">
 			<h3 style="margin-top:0px">Settings</h3>
 			<input type="checkbox" id="goBackwardsCheck"><label>Play map backwards</label><br>
@@ -62,6 +84,7 @@
 			</select>
 		</div>
 
+		
 	</div>
 
 	<div id="gameDiv"></div>
@@ -73,19 +96,13 @@
     <script src='three.min.js'></script>
 	<script src="threeJSSources.js"></script>
 	<script src="VRButton.js"></script>
-	
 
 	
 <script type="module" id='rendered-js'>
 import {OBJLoader} from './OBJLoader.js';
 
-
-// Wrapping everything in an anonymous function helps prevent issues from global variables
-// It's still a good idea to minimize them as much as possible, however
- (function() { 
+ (function() { // Wrapping everything in an anonymous function helps prevent issues from global variables
 	
-	
-
 	//Paths to the various sounds
 	const soundFiles = {
 		pingSound: "ping.ogg",
@@ -122,7 +139,7 @@ import {OBJLoader} from './OBJLoader.js';
 
 		return sound;
 	}
-
+	
 	//function for when "load a map" button is clicked, calls init()
 	function loadMap() {
 		const reader = new FileReader();
@@ -151,10 +168,77 @@ import {OBJLoader} from './OBJLoader.js';
 		input.click();
 	}
 
+	//Muliplayer
+	let multiplayerMap = [];
+
+	// if user is running mozilla then use it's built-in WebSocket
+	window.WebSocket = window.WebSocket || window.MozWebSocket;
+	
+	let connected = false;
+	let connection;
+
+	document.getElementById("connectButton").addEventListener("click", function() {
+		const serverName = document.getElementById("serverInput").value;
+		const connDiv = document.getElementById("connectedDiv");
+		
+		if (serverName == "") {
+			alert("Please enter a server name");
+			return;
+		}
+		
+
+		connection = new WebSocket("ws://" + serverName + ":1337");
+	
+		connection.onerror = function () {
+			connDiv.innerHTML = "Error, could not connect to server";
+			connDiv.className = "error";
+		}
+
+		connection.onopen = function() {
+			connected = true;
+			connDiv.innerHTML = "Connected to " + serverName;
+			connDiv.className = "success";
+		}
+
+		//Event for determining if a map was received
+		connection.onmessage = function (message) {
+			let json;
+			try {
+				json = JSON.parse(message.data);
+			} catch (e) {
+				console.log('Invalid JSON: ', message.data);
+				return;
+			}
+
+			if (json.type == "map") {
+				multiplayerMap = json.map;
+			}
+		}
+		
+			
+		
+	})
+	
+	//////
+
 	//Called by loadMap() (from Load a Map button) and from clicking Play / "startButton" 
 	function init(e, mapToLoad) {
-		mapToLoad = mapToLoad || getSelectedMap() || [(10 - Math.random() * 20), (10 - Math.random() * 20), (10 - Math.random() * 20)];
+		if (!connected) {
+			document.getElementById("connectedDiv").innerHTML = "Not connected to server";
+			return;
+		}
 
+		if (multiplayerMap.length < 1) {
+			mapToLoad = mapToLoad || getSelectedMap() || [(10 - Math.random() * 20), (10 - Math.random() * 20), (10 - Math.random() * 20)];
+
+			connection.send(JSON.stringify({
+				type: "map",
+				map: mapToLoad
+			}));
+		}
+		else {
+			mapToLoad = multiplayerMap;
+		}
 		let mapObj = {};
 		if (typeof mapToLoad === "object" && !Array.isArray(mapToLoad)) {
 			//Convert map object to array of points
@@ -171,9 +255,12 @@ import {OBJLoader} from './OBJLoader.js';
 		
 		const sphereRadius = mapObj.sphereRadius || 2;
 
+
+
 		let timeList = [];
 		let sphereList = [];
 		let foundSpheres = [];
+		let players = [];
 		let raycastList = [];
 
 		const blackoutDiv = document.getElementById("blackoutDiv");
@@ -197,8 +284,6 @@ import {OBJLoader} from './OBJLoader.js';
 		overlay.style.display = "none";
 		
 		const clock = new THREE.Clock();
-
-
 		renderer = new THREE.WebGLRenderer();
 		renderer.setSize(window.innerWidth, window.innerHeight);
 
@@ -232,7 +317,7 @@ import {OBJLoader} from './OBJLoader.js';
 		camera.updateProjectionMatrix();
 		scene.add(camera);
 
-		//Load objects
+		//Load object
 		if (Object.keys(mapObj).length > 1 && mapObj.customObjList) {
 			for (let i = 0; i < mapObj.customObjList.length; ++i) {
 				const x = parseInt(mapObj.posList[i*3]);
@@ -243,6 +328,59 @@ import {OBJLoader} from './OBJLoader.js';
 				loadCustomObj(mapObj.customObjList[i], pos, raycastList);
 			}	
 		}
+
+////////////////////////// Multiplayer
+
+		connection.onmessage = function (message) {
+			// try to parse JSON message. Because we know that the server
+			// always returns JSON this should work without any problem but
+			// we should make sure that the massage is not chunked or
+			// otherwise damaged.
+			let json;
+			try {
+				json = JSON.parse(message.data);
+			} catch (e) {
+				console.log('Invalid JSON: ', message.data);
+				return;
+			}
+
+			const currentPlr = players.find(function(plr) {return plr.uid == json.clientId});
+
+			if (json.type == "data") {
+
+				if (!currentPlr) {
+					//Player doesn't exist, create object
+					const geometry = new THREE.BoxGeometry(3, 3, 3);
+					const material = new THREE.MeshBasicMaterial( { color: json.clientColor } );
+					const newPlrObj = new THREE.Mesh( geometry, material );
+					scene.add(newPlrObj);
+
+					const plrSound = loadSound(json.clientSound, true);
+					plrSound.setLoop(true);
+					newPlrObj.add(plrSound);
+
+					players.push({uid: json.clientId, obj: newPlrObj, sound: plrSound});
+					raycastList.push(newPlrObj);
+				}
+				else {
+					currentPlr.obj.position.set(json.x, json.y, json.z);
+				}	
+			}	
+			else if (json.type == "remove") {
+				currentPlr.sound.pause();
+				scene.remove(currentPlr.obj);
+				
+				//remove from players array
+				let indexToRemove = players.indexOf(currentPlr);
+				players.splice(indexToRemove, 1);
+
+				//remove from raycasting array
+				indexToRemove = raycastList.indexOf(currentPlr);
+				raycastList.splice(indexToRemove, 1);
+			}		
+		};
+
+//////////////////////////////////////////////////
 
 		//VR
 		document.body.appendChild( VRButton.createButton( renderer ) );
@@ -280,7 +418,7 @@ import {OBJLoader} from './OBJLoader.js';
 		texture.wrapT = THREE.RepeatWrapping;
 		texture.repeat = new THREE.Vector2(50, 50);
 		texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-
+		
 		const material = new THREE.MeshPhongMaterial({
 			color: 0xff00ff,
 			specular: 0xffffff,
@@ -288,20 +426,14 @@ import {OBJLoader} from './OBJLoader.js';
 			opacity: .5,
 			shininess: 20,
 			side: THREE.DoubleSide,
-			map: texture
+			//map: texture
 		});
 
-		const planeGeometry = new THREE.PlaneGeometry(1000, 1000);
+		const geometry = new THREE.PlaneGeometry(1000, 1000);
 
-		const baseplateMesh = new THREE.Mesh(planeGeometry, material);
+		const baseplateMesh = new THREE.Mesh(geometry, material);
 		baseplateMesh.rotation.x = -Math.PI / 2;
 		scene.add(baseplateMesh);
-
-		// const skyboxGeometry = new THREE.BoxGeometry(1000, 1000, 1000);
-		// const skyboxMaterial = new THREE.MeshBasicMaterial( { color: 0x000000 } );
-		// const skybox = new THREE.Mesh( skyboxGeometry, skyboxMaterial );
-		// scene.add(skybox);
-		// raycastList.push(skybox);
 
 		//make object containing needed sounds
 		const sounds = {};
@@ -343,7 +475,7 @@ import {OBJLoader} from './OBJLoader.js';
 		const audioLoader = new THREE.AudioLoader();
 		audioLoader.load( soundFiles.winSound, function( buffer ) {
 			winSound.setBuffer( buffer );
-			winSound.setVolume( 0.15 );
+			winSound.setVolume( 0.35 );
 		});
 
 		sounds["winSound"] = winSound;
@@ -361,7 +493,6 @@ import {OBJLoader} from './OBJLoader.js';
 		}
 		document.addEventListener("keydown", checkIfReady);
 
-		//Wait three seconds before beginning. It's rather messy in JS
 		let countdown = 3;
 		const waitUntilReady = setInterval(function() {
 			if (pressedW || enableController) {
@@ -393,7 +524,7 @@ import {OBJLoader} from './OBJLoader.js';
 
 			sounds.pingSound.play();
 			clock.start();
-	
+			
 			//recursive. calls update() and render()
 			function animate() {
 				if (enableController) {
@@ -438,6 +569,15 @@ import {OBJLoader} from './OBJLoader.js';
 				if (orienControlsEnabled) {
 					controls.update();
 				}
+
+
+				//Send info to server
+				const x = camera.position.x;
+				const y = camera.position.y;
+				const z = camera.position.z;
+				connection.send(x + "," + y + "," + z);
+				////
+
 				renderer.render(scene, camera);
 			}
 
@@ -465,6 +605,14 @@ import {OBJLoader} from './OBJLoader.js';
 		}
 	}
 
+	//When user resizes screen
+	function resize() {
+		camera.aspect = window.innerWidth / window.innerHeight;
+		camera.updateProjectionMatrix();
+
+		renderer.setSize(window.innerWidth, window.innerHeight);
+	}
+
 	function loadCustomObj(objPath, pos, raycastList) {
 		const loader = new OBJLoader();
 
@@ -488,14 +636,6 @@ import {OBJLoader} from './OBJLoader.js';
 				console.log( 'An error happened' );
 			}
 		);	
-	}
-
-	//When user resizes screen
-	function resize() {
-		camera.aspect = window.innerWidth / window.innerHeight;
-		camera.updateProjectionMatrix();
-
-		renderer.setSize(window.innerWidth, window.innerHeight);
 	}
 
 	function difference(n, m) {
@@ -586,8 +726,7 @@ import {OBJLoader} from './OBJLoader.js';
 			}
 		}
 		else {
-			probeObj.position.set(3000, 3000, 3000);
-			//sounds.caneSound.pause();
+			sounds.caneSound.pause();
 		}
 	}
 
@@ -739,6 +878,7 @@ import {OBJLoader} from './OBJLoader.js';
 			return mapObj;
 		}
 		return null;
+			
 	}
 
 	function sendEmail(msg) {	
@@ -757,6 +897,7 @@ import {OBJLoader} from './OBJLoader.js';
 
 	function youWin(name, timeList, sounds, mapObj) {
 		renderer.setAnimationLoop(null);
+		connection.close();
 
 		if (!document.getElementById("submitResultsCheck").checked) {
 			location.reload();
