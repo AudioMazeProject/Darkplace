@@ -459,9 +459,9 @@ import {OBJLoader} from './OBJLoader.js';
 			// create an object for the sound to play from
 			const sphere = new THREE.SphereGeometry(1, 32, 16);
 
-			//10 - Math.random() * 20,Math.random() * 20,Math.random() * 20
 			const m = new THREE.MeshPhongMaterial({ color: 0xff0000 });
 			probeObj = new THREE.Mesh(sphere, m);
+			probeObj.position.set(3000, 3000, 3000);
 			scene.add(probeObj);
 			probeObj.add(sounds.caneSound);
 		}
@@ -523,6 +523,9 @@ import {OBJLoader} from './OBJLoader.js';
 			raycastList = raycastList.concat(sphereList);
 
 			sounds.pingSound.play();
+			if (enableAudioCane || mapObj.enableAudioCane) {
+				sounds.caneSound.play();
+			}
 			clock.start();
 			
 			//recursive. calls update() and render()
@@ -721,12 +724,13 @@ import {OBJLoader} from './OBJLoader.js';
 		if (intersects.length > 0) {
 			
 			probeObj.position.copy(intersects[0].point);
-			if (!sounds.caneSound.isPlaying) {
-				sounds.caneSound.play();
-			}
+			//if (!sounds.caneSound.isPlaying) {
+			//	sounds.caneSound.play();
+			//}
 		}
 		else {
-			sounds.caneSound.pause();
+			probeObj.position.set(3000, 3000, 3000);
+			//sounds.caneSound.pause();
 		}
 	}
 

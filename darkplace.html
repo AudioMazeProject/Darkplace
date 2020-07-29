@@ -297,12 +297,6 @@ import {OBJLoader} from './OBJLoader.js';
 		baseplateMesh.rotation.x = -Math.PI / 2;
 		scene.add(baseplateMesh);
 
-		// const skyboxGeometry = new THREE.BoxGeometry(1000, 1000, 1000);
-		// const skyboxMaterial = new THREE.MeshBasicMaterial( { color: 0x000000 } );
-		// const skybox = new THREE.Mesh( skyboxGeometry, skyboxMaterial );
-		// scene.add(skybox);
-		// raycastList.push(skybox);
-
 		//make object containing needed sounds
 		const sounds = {};
 
@@ -327,11 +321,15 @@ import {OBJLoader} from './OBJLoader.js';
 			// create an object for the sound to play from
 			const sphere = new THREE.SphereGeometry(1, 32, 16);
 
-			//10 - Math.random() * 20,Math.random() * 20,Math.random() * 20
 			const m = new THREE.MeshPhongMaterial({ color: 0xff0000 });
 			probeObj = new THREE.Mesh(sphere, m);
+			probeObj.position.set(3000, 3000, 3000);
 			scene.add(probeObj);
 			probeObj.add(sounds.caneSound);
+
+			//Does it make sense to play the caneSound here immediately? Yes. Does it work? No. 
+			//Makes sound audible during the countdown. Probably due to the scene not being rendered yet or something
+			//caneSound.play() is in the begin function instead
 		}
 
 		const listener = new THREE.AudioListener();
@@ -361,7 +359,8 @@ import {OBJLoader} from './OBJLoader.js';
 		}
 		document.addEventListener("keydown", checkIfReady);
 
-		//Wait three seconds before beginning. It's rather messy in JS
+		//Wait three seconds before beginning. It's rather messy in JS,
+		//which is why we need these extra functions and such
 		let countdown = 3;
 		const waitUntilReady = setInterval(function() {
 			if (pressedW || enableController) {
@@ -392,6 +391,9 @@ import {OBJLoader} from './OBJLoader.js';
 			raycastList = raycastList.concat(sphereList);
 
 			sounds.pingSound.play();
+			if (enableAudioCane || mapObj.enableAudioCane) {
+				sounds.caneSound.play();
+			}
 			clock.start();
 	
 			//recursive. calls update() and render()
@@ -581,9 +583,9 @@ import {OBJLoader} from './OBJLoader.js';
 		if (intersects.length > 0) {
 			
 			probeObj.position.copy(intersects[0].point);
-			if (!sounds.caneSound.isPlaying) {
-				sounds.caneSound.play();
-			}
+			//if (!sounds.caneSound.isPlaying) {
+			//	sounds.caneSound.play();
+			//}
 		}
 		else {
 			probeObj.position.set(3000, 3000, 3000);
